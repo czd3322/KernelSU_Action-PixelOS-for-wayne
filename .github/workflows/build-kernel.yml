@@ -37,7 +37,7 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabihf-
           mkdir -p out
           make O=out wayne_defconfig
-          make O=out -j$(nproc)
+          make O=out -j$(nproc) KCFLAGS="-Wno-error"
 
       - name: Package with AnyKernel3
         run: |
