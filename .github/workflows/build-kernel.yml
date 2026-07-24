@@ -1,6 +1,8 @@
 name: Build KernelSU for wayne (PixelOS 12)
+
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,9 +15,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git curl wget cpio
 
-      - name: Clone kernel source (PixelOS wayne)
-        run: |
-          git clone --depth=1 -b twelve https://github.com/PixelOS-Devices/kernel_xiaomi_wayne.git kernel
+      - name: Clone kernel source (LineageOS sdm660)
+        uses: actions/checkout@v4
+        with:
+          repository: LineageOS/android_kernel_xiaomi_sdm660
+          ref: lineage-19.1
+          path: kernel
 
       - name: Integrate KernelSU
         run: |
