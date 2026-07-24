@@ -6,18 +6,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout KernelSU Action
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
       - name: Set up environment
         run: |
           sudo apt-get update
           sudo apt-get install -y git curl wget cpio
+
       - name: Clone kernel source (PixelOS wayne)
         run: |
           git clone --depth=1 -b twelve https://github.com/PixelOS-Devices/kernel_xiaomi_wayne.git kernel
+
       - name: Integrate KernelSU
         run: |
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+
       - name: Build kernel
         run: |
           cd kernel
@@ -28,14 +32,16 @@ jobs:
           mkdir -p out
           make O=out wayne_defconfig
           make O=out -j$(nproc)
+
       - name: Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
           cp kernel/out/arch/arm64/boot/Image.gz-dtb anykernel/
           cd anykernel
           zip -r9 KernelSU-wayne-PixelOS12.zip *
+
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: KernelSU-wayne
           path: anykernel/KernelSU-wayne-PixelOS12.zip
