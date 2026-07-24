@@ -13,7 +13,8 @@ jobs:
       - name: Set up environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git curl wget cpio
+          sudo apt-get install -y git curl wget cpio \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
 
       - name: Clone kernel source (LineageOS sdm660)
         uses: actions/checkout@v4
