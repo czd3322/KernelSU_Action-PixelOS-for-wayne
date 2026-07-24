@@ -1,0 +1,46 @@
+name: Build KernelSU for wayne (PixelOS 12)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout KernelSU Action
+        uses: actions/checkout@v3
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl wget cpio
+
+      - name: Clone kernel source (PixelOS wayne)
+        run: |
+          git clone --depth=1 -b twelve https://github.com/PixelOS-Devices/kernel_xiaomi_wayne.git kernel
+      - name: Integrate KernelSU
+        run: |
+          cd kernel
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+
+      - name: Build kernel
+        run: |
+          cd kernel
+          export ARCH=arm64
+          export SUBARCH=arm64
+          导出 CROSS_COMPILE=aarch64-linux-gnu-
+          导出 CROSS_COMPILE_ARM32=arm-linux-gnueabihf-
+          mkdir -p out
+          make O=out wayne_defconfig
+          make O=out -j$(nproc)
+      - 名称: 带有 AnyKernel3 的软件包
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git anykernel
+          cp kernel/out/arch/arm64/boot/Image.gz-dtb anykernel/
+          cd anykernel
+          zip -r9 KernelSU-wayne-PixelOS12.zip *
+      - 名称: 上传构件
+        使用: actions/upload-artifact@v3
+        与:
+          名称: KernelSU-wayne
+          路径: anykernel/KernelSU-wayne-PixelOS12.zip
