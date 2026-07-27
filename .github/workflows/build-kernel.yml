@@ -1,4 +1,4 @@
-name: Build KernelSU for wayne (Jasmine 4.19 wayne_defconfig)
+name: Build KernelSU for wayne (Image.gz, no appended DTB)
 
 on:
   workflow_dispatch:
@@ -23,6 +23,14 @@ jobs:
           ref: 12
           path: kernel
 
+      - name: Disable appended DTB
+        run: |
+          cd kernel
+          # 如果 wayne_defconfig 中开启了 CONFIG_ARM64_APPENDED_DTB，就禁用它
+          sed -i 's/^CONFIG_ARM64_APPENDED_DTB=y/# CONFIG_ARM64_APPENDED_DTB is not set/' arch/arm64/configs/wayne_defconfig
+          # 确保不附加 DTB
+          echo "# CONFIG_ARM64_APPENDED_DTB is not set" >> arch/arm64/configs/wayne_defconfig
+
       - name: Integrate KernelSU
         run: |
           cd kernel
@@ -37,17 +45,21 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabihf-
           mkdir -p out
           make O=out wayne_defconfig
-          make O=out -j$(nproc) KCFLAGS="-Wno-error"
+          # 只编译内核本体（Image.gz），不要 dtb
+          make O=out -j$(nproc) Image.gz KCFLAGS="-Wno-error"
+          # 检查是否生成成功
+          ls -lh out/arch/arm64/boot/Image.gz
 
       - name: Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
-          cp kernel/out/arch/arm64/boot/Image.gz-dtb anykernel/
+          # 复制 Image.gz 到 anykernel 根目录，AnyKernel3 会自动识别并使用
+          cp kernel/out/arch/arm64/boot/Image.gz anykernel/
           cd anykernel
-          zip -r9 KernelSU-wayne-Jasmine-4.19-wayne.zip *
+          zip -r9 KernelSU-wayne-Image.gz.zip *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: KernelSU-wayne
-          path: anykernel/KernelSU-wayne-Jasmine-4.19-wayne.zip
+          path: anykernel/KernelSU-wayne-Image.gz.zip
