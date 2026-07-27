@@ -1,4 +1,4 @@
- name: Build KernelSU for wayne (Jasmine 4.19 wayne_defconfig)
+name: Build KernelSU for wayne (Jasmine 4.19 wayne_defconfig)
 
 on:
   workflow_dispatch:
