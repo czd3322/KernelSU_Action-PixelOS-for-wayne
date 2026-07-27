@@ -1,4 +1,4 @@
-name: Build KernelSU for wayne (PixelOS 12 - 4.19 kernel)
+ name: Build KernelSU for wayne (Jasmine 4.19 wayne_defconfig)
 
 on:
   workflow_dispatch:
@@ -44,10 +44,10 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
           cp kernel/out/arch/arm64/boot/Image.gz-dtb anykernel/
           cd anykernel
-          zip -r9 KernelSU-wayne-PixelOS12-4.19.zip *
+          zip -r9 KernelSU-wayne-Jasmine-4.19-wayne.zip *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: KernelSU-wayne
-          path: anykernel/KernelSU-wayne-PixelOS12-4.19.zip
+          path: anykernel/KernelSU-wayne-Jasmine-4.19-wayne.zip
