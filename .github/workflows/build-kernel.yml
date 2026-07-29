@@ -1,4 +1,4 @@
-name: Build KernelSU for wayne (Image.gz, no appended DTB)
+name: Build KernelSU for wayne (LineageOS 20 - lineage-20.0)
 
 on:
   workflow_dispatch:
@@ -16,19 +16,18 @@ jobs:
           sudo apt-get install -y git curl wget cpio \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
 
-      - name: Clone kernel source (Jasmine 4.19 - branch 12)
+      - name: Clone kernel source (LineageOS wayne lineage-20.0)
         uses: actions/checkout@v4
         with:
-          repository: Jasmine-Wayne-4-19/android_kernel_xiaomi_sdm660_4.19
-          ref: 12
+          repository: LineageOS-wayne/android_kernel_xiaomi_wayne
+          ref: lineage-20.0
           path: kernel
 
       - name: Disable appended DTB
         run: |
           cd kernel
-          # 如果 wayne_defconfig 中开启了 CONFIG_ARM64_APPENDED_DTB，就禁用它
+          # 确保 wayne_defconfig 不会把 DTB 硬编码进内核
           sed -i 's/^CONFIG_ARM64_APPENDED_DTB=y/# CONFIG_ARM64_APPENDED_DTB is not set/' arch/arm64/configs/wayne_defconfig
-          # 确保不附加 DTB
           echo "# CONFIG_ARM64_APPENDED_DTB is not set" >> arch/arm64/configs/wayne_defconfig
 
       - name: Integrate KernelSU
@@ -36,7 +35,7 @@ jobs:
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
 
-      - name: Build kernel
+      - name: Build kernel (Image.gz)
         run: |
           cd kernel
           export ARCH=arm64
@@ -45,21 +44,18 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabihf-
           mkdir -p out
           make O=out wayne_defconfig
-          # 只编译内核本体（Image.gz），不要 dtb
           make O=out -j$(nproc) Image.gz KCFLAGS="-Wno-error"
-          # 检查是否生成成功
           ls -lh out/arch/arm64/boot/Image.gz
 
       - name: Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
-          # 复制 Image.gz 到 anykernel 根目录，AnyKernel3 会自动识别并使用
           cp kernel/out/arch/arm64/boot/Image.gz anykernel/
           cd anykernel
-          zip -r9 KernelSU-wayne-Image.gz.zip *
+          zip -r9 KernelSU-wayne-LineageOS20.zip *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: KernelSU-wayne
-          path: anykernel/KernelSU-wayne-Image.gz.zip
+          path: anykernel/KernelSU-wayne-LineageOS20.zip
