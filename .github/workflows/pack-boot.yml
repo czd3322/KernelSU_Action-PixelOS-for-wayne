@@ -49,10 +49,12 @@ jobs:
           cd extracted2
         fi
         
+        # 列出当前目录所有文件，方便调试
         echo "当前目录内容："
         ls -la
         
         # 查找内核镜像（支持 Image.gz、Image.gz-dtb、Image）
+        # 注意：可能在当前目录或子目录中
         KERNEL_FILE=$(find . -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image" | head -1)
         
         if [ -z "$KERNEL_FILE" ]; then
@@ -72,15 +74,13 @@ jobs:
 
     - name: Pack boot.img
       run: |
-        mkdir -p out
-        
-        # 解包模板，指定输出目录 out/
+        # 解包模板到 out 目录
         python tools/unpack_bootimg.py --boot_img boot-source.img --out out
         
-        # 替换内核
+        # 替换内核（使用之前准备好的 kernel 文件）
         cp kernel out/kernel
         
-        # 读取参数（现在 out/ 下应该有这些文件）
+        # 读取参数
         BASE=$(cat out/base)
         PAGESIZE=$(cat out/pagesize)
         CMDLINE=$(cat out/cmdline)
