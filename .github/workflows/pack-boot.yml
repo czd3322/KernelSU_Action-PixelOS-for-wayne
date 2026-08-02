@@ -1,30 +1,3 @@
-name: Pack Boot Image
-
-on:
-  workflow_dispatch:
-    inputs:
-      run_id:
-        description: '源构建的 run-id'
-        required: true
-        type: string
-
-permissions:
-  actions: read
-  contents: read
-
-jobs:
-  pack:
-    name: Pack boot.img from existing kernel
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Download mkbootimg tools
-      run: |
-        git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
-
     - name: Download kernel artifact
       uses: dawidd6/action-download-artifact@v6
       with:
@@ -33,98 +6,20 @@ jobs:
         path: ./
         github_token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract nested zip and locate kernel
+    - name: Extract and locate kernel
       run: |
+        # 列出下载的文件，方便排查
+        ls -la
         # 解压第一层 zip
-        if [ -f kernel.zip ]; then
-          unzip -o kernel.zip -d extracted
-          cd extracted
+        if [ -f *.zip ]; then
+          unzip -o *.zip -d extracted
         fi
-        
-        # 解压第二层 zip（AnyKernel3 打包的 zip）
-        NESTED_ZIP=$(ls *.zip 2>/dev/null | head -1)
-        if [ -n "$NESTED_ZIP" ]; then
-          echo "发现嵌套 zip: $NESTED_ZIP，正在解压..."
-          unzip -o "$NESTED_ZIP" -d extracted2
-          cd extracted2
-        fi
-        
-        # 查找内核镜像
-        KERNEL_FILE=$(find . -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image" | head -1)
-        
+        # 查找内核文件（Image.gz 或 Image.gz-dtb）
+        KERNEL_FILE=$(find extracted -name "Image.gz-dtb" -o -name "Image.gz" -o -name "Image" | head -1)
         if [ -z "$KERNEL_FILE" ]; then
-          echo "❌ 未找到内核镜像"
-          find . -type f -size +1M | head -10
+          echo "❌ 未找到内核镜像，当前文件列表："
+          find extracted -type f
           exit 1
         fi
-        
-        # 复制到工作目录
-        cp "$KERNEL_FILE" ../../kernel
-        cd ../..
-        echo "✅ 内核镜像已准备: $(ls -lh kernel)"
-
-    - name: Download source boot image
-      run: |
-        wget -O boot-source.img https://github.com/czd3322/wayne-files/raw/refs/heads/main/boot.img
-
-    - name: Pack boot.img
-      run: |
-        mkdir -p out
-        
-        # 解包模板并捕获输出
-        UNPACK_OUTPUT=$(python tools/unpack_bootimg.py --boot_img boot-source.img 2>&1)
-        echo "$UNPACK_OUTPUT"
-        
-        # 从输出中解析参数
-        BASE=$(echo "$UNPACK_OUTPUT" | grep "page size:" | awk '{print $NF}')
-        PAGESIZE=$(echo "$UNPACK_OUTPUT" | grep "page size:" | awk '{print $NF}')
-        CMDLINE=$(echo "$UNPACK_OUTPUT" | grep "command line args:" | sed 's/command line args: //')
-        KERNEL_OFFSET=$(echo "$UNPACK_OUTPUT" | grep "kernel load address:" | awk '{print $NF}')
-        RAMDISK_OFFSET=$(echo "$UNPACK_OUTPUT" | grep "ramdisk load address:" | awk '{print $NF}')
-        TAGS_OFFSET=$(echo "$UNPACK_OUTPUT" | grep "kernel tags load address:" | awk '{print $NF}')
-        HEADER_VERSION=$(echo "$UNPACK_OUTPUT" | grep "boot image header version:" | awk '{print $NF}')
-        
-        # 如果某些参数解析失败，使用默认值
-        if [ -z "$KERNEL_OFFSET" ]; then KERNEL_OFFSET="0x00080000"; fi
-        if [ -z "$RAMDISK_OFFSET" ]; then RAMDISK_OFFSET="0x01000000"; fi
-        if [ -z "$TAGS_OFFSET" ]; then TAGS_OFFSET="0x00000100"; fi
-        if [ -z "$HEADER_VERSION" ]; then HEADER_VERSION="1"; fi
-        
-        echo "解析到的参数："
-        echo "BASE=$BASE"
-        echo "PAGESIZE=$PAGESIZE"
-        echo "CMDLINE=$CMDLINE"
-        echo "KERNEL_OFFSET=$KERNEL_OFFSET"
-        echo "RAMDISK_OFFSET=$RAMDISK_OFFSET"
-        echo "TAGS_OFFSET=$TAGS_OFFSET"
-        echo "HEADER_VERSION=$HEADER_VERSION"
-        
-        # 用内核文件替换 out/kernel
-        cp kernel out/kernel
-        
-        # 打包 boot.img
-        python tools/mkbootimg.py \
-          --kernel out/kernel \
-          --ramdisk out/ramdisk \
-          --cmdline "$CMDLINE" \
-          --base "$BASE" \
-          --pagesize "$PAGESIZE" \
-          --kernel_offset "$KERNEL_OFFSET" \
-          --ramdisk_offset "$RAMDISK_OFFSET" \
-          --tags_offset "$TAGS_OFFSET" \
-          --header_version "$HEADER_VERSION" \
-          -o boot.img
-        
-        if [ -f boot.img ]; then
-          echo "✅ boot.img 生成成功！"
-          ls -lh boot.img
-        else
-          echo "❌ boot.img 生成失败"
-          exit 1
-        fi
-
-    - name: Upload boot.img
-      uses: actions/upload-artifact@v4
-      with:
-        name: boot.img
-        path: boot.img
+        cp "$KERNEL_FILE" ./kernel
+        echo "✅ 内核文件已准备: $(ls -lh ./kernel)"
