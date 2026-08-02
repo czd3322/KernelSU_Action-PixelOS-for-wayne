@@ -35,40 +35,38 @@ jobs:
 
     - name: Extract nested zip and locate kernel
       run: |
-        # 如果直接下载得到的是 zip，先解压
+        # 解压第一层 zip（如果有）
         if [ -f kernel.zip ]; then
-          unzip -o -j kernel.zip -d extracted
+          unzip -o kernel.zip -d extracted
           cd extracted
         fi
         
-        # 现在可能会有另一个 zip 文件（如 KernelSU-wayne-LineageOS20.zip）
+        # 解压第二层 zip（如果有），使用 -o 强制覆盖，避免交互提示
         NESTED_ZIP=$(ls *.zip 2>/dev/null | head -1)
         if [ -n "$NESTED_ZIP" ]; then
-          echo "发现嵌套 zip: $NESTED_ZIP，正在解压..."
-          unzip -o -j "$NESTED_ZIP" -d ..
-          cd ..
+          echo "发现嵌套 zip: $NESTED_ZIP，正在解压（强制覆盖）..."
+          unzip -o "$NESTED_ZIP" -d extracted2
+          cd extracted2
         fi
         
-        # 现在查找内核镜像（支持 Image.gz、Image.gz-dtb、Image）
-        KERNEL_FILE=""
-        if [ -f Image.gz-dtb ]; then
-          KERNEL_FILE="Image.gz-dtb"
-        elif [ -f Image.gz ]; then
-          KERNEL_FILE="Image.gz"
-        elif [ -f Image ]; then
-          KERNEL_FILE="Image"
-        fi
+        # 列出当前目录所有文件，方便调试
+        echo "当前目录内容："
+        ls -la
+        
+        # 查找内核镜像（支持 Image.gz、Image.gz-dtb、Image）
+        # 注意：可能在当前目录或子目录中
+        KERNEL_FILE=$(find . -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image" | head -1)
         
         if [ -z "$KERNEL_FILE" ]; then
-          echo "❌ 未找到内核镜像，当前目录内容："
-          ls -la
+          echo "❌ 未找到内核镜像，尝试搜索整个目录："
+          find . -type f -size +1M | head -10
           exit 1
         fi
         
-        # 重命名为 kernel（供后续使用）
-        mv "$KERNEL_FILE" kernel
-        echo "✅ 内核镜像已准备: $KERNEL_FILE -> kernel"
-        ls -lh kernel
+        # 复制到工作目录并重命名为 kernel
+        cp "$KERNEL_FILE" ../kernel
+        cd ../..
+        echo "✅ 内核镜像已准备: $(ls -lh kernel)"
 
     - name: Download source boot image
       run: |
