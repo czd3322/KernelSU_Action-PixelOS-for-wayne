@@ -35,36 +35,31 @@ jobs:
 
     - name: Extract nested zip and locate kernel
       run: |
-        # 解压第一层 zip（如果有）
+        # 解压第一层 zip
         if [ -f kernel.zip ]; then
           unzip -o kernel.zip -d extracted
           cd extracted
         fi
         
-        # 解压第二层 zip（如果有），使用 -o 强制覆盖，避免交互提示
+        # 解压第二层 zip（AnyKernel3 打包的 zip）
         NESTED_ZIP=$(ls *.zip 2>/dev/null | head -1)
         if [ -n "$NESTED_ZIP" ]; then
-          echo "发现嵌套 zip: $NESTED_ZIP，正在解压（强制覆盖）..."
+          echo "发现嵌套 zip: $NESTED_ZIP，正在解压..."
           unzip -o "$NESTED_ZIP" -d extracted2
           cd extracted2
         fi
         
-        # 列出当前目录所有文件，方便调试
-        echo "当前目录内容："
-        ls -la
-        
-        # 查找内核镜像（支持 Image.gz、Image.gz-dtb、Image）
-        # 注意：可能在当前目录或子目录中
+        # 查找内核镜像
         KERNEL_FILE=$(find . -name "Image.gz" -o -name "Image.gz-dtb" -o -name "Image" | head -1)
         
         if [ -z "$KERNEL_FILE" ]; then
-          echo "❌ 未找到内核镜像，尝试搜索整个目录："
+          echo "❌ 未找到内核镜像"
           find . -type f -size +1M | head -10
           exit 1
         fi
         
-        # 复制到工作目录并重命名为 kernel
-        cp "$KERNEL_FILE" ../kernel
+        # 复制到工作目录
+        cp "$KERNEL_FILE" ../../kernel
         cd ../..
         echo "✅ 内核镜像已准备: $(ls -lh kernel)"
 
@@ -74,32 +69,50 @@ jobs:
 
     - name: Pack boot.img
       run: |
-        # 解包模板到 out 目录
-        python tools/unpack_bootimg.py --boot_img boot-source.img --out out
+        mkdir -p out
         
-        # 替换内核（使用之前准备好的 kernel 文件）
+        # 解包模板并捕获输出
+        UNPACK_OUTPUT=$(python tools/unpack_bootimg.py --boot_img boot-source.img 2>&1)
+        echo "$UNPACK_OUTPUT"
+        
+        # 从输出中解析参数
+        BASE=$(echo "$UNPACK_OUTPUT" | grep "page size:" | awk '{print $NF}')
+        PAGESIZE=$(echo "$UNPACK_OUTPUT" | grep "page size:" | awk '{print $NF}')
+        CMDLINE=$(echo "$UNPACK_OUTPUT" | grep "command line args:" | sed 's/command line args: //')
+        KERNEL_OFFSET=$(echo "$UNPACK_OUTPUT" | grep "kernel load address:" | awk '{print $NF}')
+        RAMDISK_OFFSET=$(echo "$UNPACK_OUTPUT" | grep "ramdisk load address:" | awk '{print $NF}')
+        TAGS_OFFSET=$(echo "$UNPACK_OUTPUT" | grep "kernel tags load address:" | awk '{print $NF}')
+        HEADER_VERSION=$(echo "$UNPACK_OUTPUT" | grep "boot image header version:" | awk '{print $NF}')
+        
+        # 如果某些参数解析失败，使用默认值
+        if [ -z "$KERNEL_OFFSET" ]; then KERNEL_OFFSET="0x00080000"; fi
+        if [ -z "$RAMDISK_OFFSET" ]; then RAMDISK_OFFSET="0x01000000"; fi
+        if [ -z "$TAGS_OFFSET" ]; then TAGS_OFFSET="0x00000100"; fi
+        if [ -z "$HEADER_VERSION" ]; then HEADER_VERSION="1"; fi
+        
+        echo "解析到的参数："
+        echo "BASE=$BASE"
+        echo "PAGESIZE=$PAGESIZE"
+        echo "CMDLINE=$CMDLINE"
+        echo "KERNEL_OFFSET=$KERNEL_OFFSET"
+        echo "RAMDISK_OFFSET=$RAMDISK_OFFSET"
+        echo "TAGS_OFFSET=$TAGS_OFFSET"
+        echo "HEADER_VERSION=$HEADER_VERSION"
+        
+        # 用内核文件替换 out/kernel
         cp kernel out/kernel
         
-        # 读取参数
-        BASE=$(cat out/base)
-        PAGESIZE=$(cat out/pagesize)
-        CMDLINE=$(cat out/cmdline)
-        KERNEL_OFFSET=$(cat out/kernel_offset 2>/dev/null || echo "0x00080000")
-        RAMDISK_OFFSET=$(cat out/ramdisk_offset 2>/dev/null || echo "0x01000000")
-        TAGS_OFFSET=$(cat out/tags_offset 2>/dev/null || echo "0x00000100")
-        HEADER_VERSION=$(cat out/header_version 2>/dev/null || echo "0")
-        
-        # 打包
+        # 打包 boot.img
         python tools/mkbootimg.py \
           --kernel out/kernel \
           --ramdisk out/ramdisk \
           --cmdline "$CMDLINE" \
-          --base $BASE \
-          --pagesize $PAGESIZE \
-          --kernel_offset $KERNEL_OFFSET \
-          --ramdisk_offset $RAMDISK_OFFSET \
-          --tags_offset $TAGS_OFFSET \
-          --header_version $HEADER_VERSION \
+          --base "$BASE" \
+          --pagesize "$PAGESIZE" \
+          --kernel_offset "$KERNEL_OFFSET" \
+          --ramdisk_offset "$RAMDISK_OFFSET" \
+          --tags_offset "$TAGS_OFFSET" \
+          --header_version "$HEADER_VERSION" \
           -o boot.img
         
         if [ -f boot.img ]; then
