@@ -25,47 +25,50 @@ jobs:
       run: |
         git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
 
-    - name: Download kernel artifact via API
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Download kernel artifact
+      uses: dawidd6/action-download-artifact@v6
+      with:
+        run_id: ${{ github.event.inputs.run_id }}
+        name: KernelSU-wayne
+        path: ./
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract nested zip and locate kernel
       run: |
-        RUN_ID="${{ github.event.inputs.run_id }}"
-        REPO="${{ github.repository }}"
-        ARTIFACT_NAME="KernelSU-wayne"
-
-        echo "Fetching artifact info for run $RUN_ID..."
-        # 获取 artifact 下载 URL
-        ARTIFACT_URL=$(curl -s \
-          -H "Authorization: Bearer $GH_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/artifacts" \
-          | jq -r --arg NAME "$ARTIFACT_NAME" '.artifacts[] | select(.name == $NAME) | .archive_download_url')
+        # 如果直接下载得到的是 zip，先解压
+        if [ -f kernel.zip ]; then
+          unzip -j kernel.zip -d extracted
+          cd extracted
+        fi
         
-        if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
-          echo "❌ 未找到 artifact: $ARTIFACT_NAME"
-          echo "尝试列出所有 artifact："
-          curl -s -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/actions/runs/$RUN_ID/artifacts" | jq '.artifacts[] | {name, id}'
-          exit 1
+        # 现在可能会有另一个 zip 文件（如 KernelSU-wayne-LineageOS20.zip）
+        NESTED_ZIP=$(ls *.zip 2>/dev/null | head -1)
+        if [ -n "$NESTED_ZIP" ]; then
+          echo "发现嵌套 zip: $NESTED_ZIP，正在解压..."
+          unzip -j "$NESTED_ZIP" -d ..
+          cd ..
         fi
-
-        echo "✅ 找到 artifact，开始下载..."
-        curl -L -H "Authorization: Bearer $GH_TOKEN" -o kernel.zip "$ARTIFACT_URL"
-        unzip -j kernel.zip -d .
-        echo "下载完成，目录内容："
-        ls -la
-
-        # 重命名内核文件
+        
+        # 现在查找内核镜像（支持 Image.gz、Image.gz-dtb、Image）
+        KERNEL_FILE=""
         if [ -f Image.gz-dtb ]; then
-          mv Image.gz-dtb kernel
-        elif [ -f KernelSU-wayne ]; then
-          mv KernelSU-wayne kernel
-        else
-          echo "❌ 未找到内核镜像，尝试查找任何大文件："
-          find . -size +10M -type f
+          KERNEL_FILE="Image.gz-dtb"
+        elif [ -f Image.gz ]; then
+          KERNEL_FILE="Image.gz"
+        elif [ -f Image ]; then
+          KERNEL_FILE="Image"
+        fi
+        
+        if [ -z "$KERNEL_FILE" ]; then
+          echo "❌ 未找到内核镜像，当前目录内容："
+          ls -la
           exit 1
         fi
-        echo "✅ 内核镜像已准备: $(ls -lh kernel)"
+        
+        # 重命名为 kernel（供后续使用）
+        mv "$KERNEL_FILE" kernel
+        echo "✅ 内核镜像已准备: $KERNEL_FILE -> kernel"
+        ls -lh kernel
 
     - name: Download source boot image
       run: |
@@ -74,8 +77,14 @@ jobs:
     - name: Pack boot.img
       run: |
         mkdir -p out
+        
+        # 解包模板
         python tools/unpack_bootimg.py --boot_img boot-source.img
+        
+        # 替换内核
         cp kernel out/kernel
+        
+        # 读取参数（如果某些文件不存在，使用默认值）
         BASE=$(cat out/base)
         PAGESIZE=$(cat out/pagesize)
         CMDLINE=$(cat out/cmdline)
@@ -83,6 +92,8 @@ jobs:
         RAMDISK_OFFSET=$(cat out/ramdisk_offset 2>/dev/null || echo "0x01000000")
         TAGS_OFFSET=$(cat out/tags_offset 2>/dev/null || echo "0x00000100")
         HEADER_VERSION=$(cat out/header_version 2>/dev/null || echo "0")
+        
+        # 打包
         python tools/mkbootimg.py \
           --kernel out/kernel \
           --ramdisk out/ramdisk \
@@ -94,6 +105,7 @@ jobs:
           --tags_offset $TAGS_OFFSET \
           --header_version $HEADER_VERSION \
           -o boot.img
+        
         if [ -f boot.img ]; then
           echo "✅ boot.img 生成成功！"
           ls -lh boot.img
