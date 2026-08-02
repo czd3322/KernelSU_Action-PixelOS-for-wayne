@@ -22,37 +22,25 @@ jobs:
         git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
 
     - name: Download kernel artifact from previous run
-      env:
-        GH_TOKEN: ${{ github.token }}
+      uses: actions/download-artifact@v4
+      with:
+        name: KernelSU-wayne
+        run-id: ${{ github.event.inputs.run_id }}
+        github-token: ${{ github.token }}
+
+    - name: Rename kernel file
       run: |
-        # 使用 curl + jq 获取 artifact 下载 URL（更稳定）
-        ARTIFACT_URL=$(curl -s \
-          -H "Authorization: Bearer $GH_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts" \
-          | jq -r '.artifacts[] | select(.name == "KernelSU-wayne") | .archive_download_url')
-        
-        if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
-          echo "❌ 未找到名为 'KernelSU-wayne' 的 artifact"
-          echo "请检查 run_id 是否正确，以及 artifact 名称是否匹配"
-          exit 1
-        fi
-        
-        echo "✅ 找到 artifact，开始下载..."
-        curl -L -H "Authorization: Bearer $GH_TOKEN" -o kernel.zip "$ARTIFACT_URL"
-        unzip -j kernel.zip -d .
-        
-        # 查找实际的内核文件（可能是 Image.gz-dtb 或其他名称）
+        # 下载后会在当前目录生成名为 KernelSU-wayne 的文件（可能是 zip 解压后的文件，也可能是直接下载的）
+        # 但 actions/download-artifact 会自动解压到当前目录
         if [ -f Image.gz-dtb ]; then
           mv Image.gz-dtb kernel
         elif [ -f KernelSU-wayne ]; then
           mv KernelSU-wayne kernel
         else
-          echo "❌ 未找到内核镜像文件，当前目录内容："
+          echo "❌ 未找到内核镜像文件"
           ls -la
           exit 1
         fi
-        echo "✅ 内核镜像已准备: $(ls -lh kernel)"
 
     - name: Download source boot image
       run: |
@@ -61,14 +49,8 @@ jobs:
     - name: Pack boot.img
       run: |
         mkdir -p out
-        
-        # 解包模板
         python tools/unpack_bootimg.py --boot_img boot-source.img
-        
-        # 替换内核
         cp kernel out/kernel
-        
-        # 读取参数（如果某些文件不存在，使用默认值）
         BASE=$(cat out/base)
         PAGESIZE=$(cat out/pagesize)
         CMDLINE=$(cat out/cmdline)
@@ -76,8 +58,6 @@ jobs:
         RAMDISK_OFFSET=$(cat out/ramdisk_offset 2>/dev/null || echo "0x01000000")
         TAGS_OFFSET=$(cat out/tags_offset 2>/dev/null || echo "0x00000100")
         HEADER_VERSION=$(cat out/header_version 2>/dev/null || echo "0")
-        
-        # 打包
         python tools/mkbootimg.py \
           --kernel out/kernel \
           --ramdisk out/ramdisk \
@@ -89,9 +69,8 @@ jobs:
           --tags_offset $TAGS_OFFSET \
           --header_version $HEADER_VERSION \
           -o boot.img
-        
         if [ -f boot.img ]; then
-          echo "✅ boot.img 生成成功！"
+          echo "✅ boot.img 生成成功"
           ls -lh boot.img
         else
           echo "❌ boot.img 生成失败"
