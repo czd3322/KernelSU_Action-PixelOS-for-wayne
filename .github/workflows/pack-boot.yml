@@ -25,8 +25,8 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        # 获取 artifact 下载 URL
-        ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts \
+        # 获取 artifact 下载 URL（注意引号避免参数分割）
+        ARTIFACT_URL=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts" \
           --jq '.artifacts[] | select(.name == "KernelSU-wayne") | .archive_download_url')
         
         if [ -z "$ARTIFACT_URL" ]; then
@@ -34,17 +34,19 @@ jobs:
           exit 1
         fi
         
-        # 下载 artifact
+        echo "📥 下载 artifact: $ARTIFACT_URL"
         curl -L -H "Authorization: Bearer $GH_TOKEN" -o kernel.zip "$ARTIFACT_URL"
         unzip -j kernel.zip -d .
         
-        # 重命名（实际文件名可能在 zip 里是 Image.gz-dtb 或 KernelSU-wayne）
+        # 确定内核文件名
         if [ -f Image.gz-dtb ]; then
-          mv Image.gz-dtb KernelSU-wayne
+          mv Image.gz-dtb kernel
+          echo "✅ 找到内核镜像: Image.gz-dtb -> kernel"
         elif [ -f KernelSU-wayne ]; then
-          echo "✅ 找到内核镜像: KernelSU-wayne"
+          mv KernelSU-wayne kernel
+          echo "✅ 找到内核镜像: KernelSU-wayne -> kernel"
         else
-          echo "❌ 未找到内核镜像文件"
+          echo "❌ 未找到内核镜像文件，目录内容:"
           ls -la
           exit 1
         fi
@@ -61,7 +63,7 @@ jobs:
         python tools/unpack_bootimg.py --boot_img boot-source.img
         
         # 替换内核
-        cp KernelSU-wayne out/kernel
+        cp kernel out/kernel
         
         # 读取参数
         BASE=$(cat out/base)
