@@ -1,0 +1,104 @@
+name: Pack Boot Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: '源构建的 run-id（从 Actions 页面 URL 获取）'
+        required: true
+        type: string
+
+jobs:
+  pack:
+    name: Pack boot.img from existing kernel
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Python dependencies
+      run: |
+        pip install mkbootimg
+
+    - name: Download mkbootimg tools
+      run: |
+        git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
+
+    - name: Download kernel artifact from previous run
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # 获取 artifact 下载 URL
+        ARTIFACT_URL=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts \
+          --jq '.artifacts[] | select(.name == "KernelSU-wayne") | .archive_download_url')
+        
+        if [ -z "$ARTIFACT_URL" ]; then
+          echo "❌ 未找到名为 'KernelSU-wayne' 的 artifact"
+          exit 1
+        fi
+        
+        # 下载 artifact
+        curl -L -H "Authorization: Bearer $GH_TOKEN" -o kernel.zip "$ARTIFACT_URL"
+        unzip -j kernel.zip -d .
+        
+        # 重命名（实际文件名可能在 zip 里是 Image.gz-dtb 或 KernelSU-wayne）
+        if [ -f Image.gz-dtb ]; then
+          mv Image.gz-dtb KernelSU-wayne
+        elif [ -f KernelSU-wayne ]; then
+          echo "✅ 找到内核镜像: KernelSU-wayne"
+        else
+          echo "❌ 未找到内核镜像文件"
+          ls -la
+          exit 1
+        fi
+
+    - name: Download source boot image
+      run: |
+        wget -O boot-source.img https://github.com/czd3322/wayne-files/raw/refs/heads/main/boot.img
+
+    - name: Pack boot.img
+      run: |
+        mkdir -p out
+        
+        # 解包模板
+        python tools/unpack_bootimg.py --boot_img boot-source.img
+        
+        # 替换内核
+        cp KernelSU-wayne out/kernel
+        
+        # 读取参数
+        BASE=$(cat out/base)
+        PAGESIZE=$(cat out/pagesize)
+        CMDLINE=$(cat out/cmdline)
+        KERNEL_OFFSET=$(cat out/kernel_offset 2>/dev/null || echo "0x00080000")
+        RAMDISK_OFFSET=$(cat out/ramdisk_offset 2>/dev/null || echo "0x01000000")
+        TAGS_OFFSET=$(cat out/tags_offset 2>/dev/null || echo "0x00000100")
+        HEADER_VERSION=$(cat out/header_version 2>/dev/null || echo "0")
+        
+        # 打包
+        python tools/mkbootimg.py \
+          --kernel out/kernel \
+          --ramdisk out/ramdisk \
+          --cmdline "$CMDLINE" \
+          --base $BASE \
+          --pagesize $PAGESIZE \
+          --kernel_offset $KERNEL_OFFSET \
+          --ramdisk_offset $RAMDISK_OFFSET \
+          --tags_offset $TAGS_OFFSET \
+          --header_version $HEADER_VERSION \
+          -o boot.img
+        
+        if [ -f boot.img ]; then
+          echo "✅ boot.img 生成成功！"
+          ls -lh boot.img
+        else
+          echo "❌ boot.img 生成失败"
+          exit 1
+        fi
+
+    - name: Upload boot.img
+      uses: actions/upload-artifact@v4
+      with:
+        name: boot.img
+        path: boot.img
