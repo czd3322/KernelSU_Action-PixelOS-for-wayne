@@ -12,7 +12,7 @@ jobs:
   pack:
     name: Pack boot.img from existing kernel
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -25,31 +25,33 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        # 获取 artifact 下载 URL（注意引号避免参数分割）
-        ARTIFACT_URL=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts" \
+        # 获取 artifact 下载 URL（注意语法）
+        ARTIFACT_URL=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          /repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts \
           --jq '.artifacts[] | select(.name == "KernelSU-wayne") | .archive_download_url')
         
         if [ -z "$ARTIFACT_URL" ]; then
           echo "❌ 未找到名为 'KernelSU-wayne' 的 artifact"
+          echo "请检查 run_id 是否正确，以及 artifact 名称是否匹配"
           exit 1
         fi
         
-        echo "📥 下载 artifact: $ARTIFACT_URL"
+        echo "✅ 找到 artifact，开始下载..."
         curl -L -H "Authorization: Bearer $GH_TOKEN" -o kernel.zip "$ARTIFACT_URL"
         unzip -j kernel.zip -d .
         
-        # 确定内核文件名
+        # 查找实际的内核文件（可能是 Image.gz-dtb 或其他名称）
         if [ -f Image.gz-dtb ]; then
           mv Image.gz-dtb kernel
-          echo "✅ 找到内核镜像: Image.gz-dtb -> kernel"
         elif [ -f KernelSU-wayne ]; then
           mv KernelSU-wayne kernel
-          echo "✅ 找到内核镜像: KernelSU-wayne -> kernel"
         else
-          echo "❌ 未找到内核镜像文件，目录内容:"
+          echo "❌ 未找到内核镜像文件，当前目录内容："
           ls -la
           exit 1
         fi
+        echo "✅ 内核镜像已准备: $(ls -lh kernel)"
 
     - name: Download source boot image
       run: |
@@ -65,7 +67,7 @@ jobs:
         # 替换内核
         cp kernel out/kernel
         
-        # 读取参数
+        # 读取参数（如果某些文件不存在，使用默认值）
         BASE=$(cat out/base)
         PAGESIZE=$(cat out/pagesize)
         CMDLINE=$(cat out/cmdline)
