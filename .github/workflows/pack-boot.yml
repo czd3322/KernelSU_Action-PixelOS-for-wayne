@@ -17,10 +17,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Install Python dependencies
-      run: |
-        pip install mkbootimg
-
     - name: Download mkbootimg tools
       run: |
         git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
