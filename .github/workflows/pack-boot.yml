@@ -25,13 +25,14 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        # 获取 artifact 下载 URL（注意语法）
-        ARTIFACT_URL=$(gh api \
+        # 使用 curl + jq 获取 artifact 下载 URL（更稳定）
+        ARTIFACT_URL=$(curl -s \
+          -H "Authorization: Bearer $GH_TOKEN" \
           -H "Accept: application/vnd.github+json" \
-          /repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts \
-          --jq '.artifacts[] | select(.name == "KernelSU-wayne") | .archive_download_url')
+          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.inputs.run_id }}/artifacts" \
+          | jq -r '.artifacts[] | select(.name == "KernelSU-wayne") | .archive_download_url')
         
-        if [ -z "$ARTIFACT_URL" ]; then
+        if [ -z "$ARTIFACT_URL" ] || [ "$ARTIFACT_URL" = "null" ]; then
           echo "❌ 未找到名为 'KernelSU-wayne' 的 artifact"
           echo "请检查 run_id 是否正确，以及 artifact 名称是否匹配"
           exit 1
