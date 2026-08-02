@@ -37,7 +37,7 @@ jobs:
       run: |
         # 如果直接下载得到的是 zip，先解压
         if [ -f kernel.zip ]; then
-          unzip -j kernel.zip -d extracted
+          unzip -o -j kernel.zip -d extracted
           cd extracted
         fi
         
@@ -45,7 +45,7 @@ jobs:
         NESTED_ZIP=$(ls *.zip 2>/dev/null | head -1)
         if [ -n "$NESTED_ZIP" ]; then
           echo "发现嵌套 zip: $NESTED_ZIP，正在解压..."
-          unzip -j "$NESTED_ZIP" -d ..
+          unzip -o -j "$NESTED_ZIP" -d ..
           cd ..
         fi
         
